@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>xx方案数据可视化</title>
+    <!-- <script src="./js/html2canvas.js"></script> -->
+    <script src="./js/data-set.min.js"></script>
+    <script src="./js/g2.min.js"></script>
+    <script src="./js/jquery.min.js"></script>
+    <script src="./js/highcharts.js"></script>
+    <style type="text/css" scoped>
+        * {
+            margin: 0;
+        }
+        .g2-guide {
+            width: 100%;
+            vertical-align: middle;
+            text-align: center;
+            line-height: 0.4;
+            background-color: white;
+        }
+
+        .g2-guide .title {
+            font-size: 12px;
+            color: #8c8c8c;
+            font-weight: 300;
+        }
+
+        .g2-guide .value {
+            font-size: 30px;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .g2-guide-html {
+            width: 100px;
+            height: 60px;
+            vertical-align: middle;
+            text-align: center;
+            line-height: 0.4
+        }
+
+        .g2-guide-html .title {
+            font-size: 12px;
+            color: #8c8c8c;
+            font-weight: 300;
+        }
+
+        .g2-guide-html .value {
+            font-size: 20px;
+            line-height: 22px;
+            padding-top: 10px;
+            max-width: 100px;
+            word-wrap: break-word;
+            overflow: hidden;
+            color: #000;
+            font-weight: bold;
+        }
+
+        /* 柱状图 */
+        .g2-guide>#bar {
+            width: 49%;
+            border: 1px solid #ccc;
+            margin-left: 14px;
+            margin-top: 10px;
+            float: left;
+            background-color: #fff;
+        }
+
+
+        /* 折线图 */
+        .g2-guide>#pie {
+            width: 48%;
+            border: 1px solid #ccc;
+            float: right;
+            background-color: #fff;
+            margin-top: 10px;
+            margin-right: 14px;
+        }
+
+        /* 折线图 */
+        .g2-guide>#line {
+            width: 98%;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            margin: 10px auto;
+        }
+
+        .icon {
+            width: 11px;
+            height: 11px;
+            background: #3D91FF;
+            transform: rotate(45deg);
+            display: inline-block;
+            margin: 0px 24px;
+        }
+
+        .tipWord {
+            font-size: 16px;
+            text-align: left;
+            border-bottom: 4px solid #3D91FF;
+            padding: 12px 0;
+        }
+
+        .chartDiv {
+            width: 100%;
+        }
+
+        .clear {
+            clear: both;
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 0px;
+            position: absolute;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background-color: #1890ff;
+        }
+
+        ::-webkit-scrollbar-track {
+            background-color: #ddd;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 创建图表容器 -->
+    <div class="g2-guide" id="chartDiv">
+        <!-- 柱状图 -->
+        <div class="chartDiv" id="bar">
+            <h2 class="tipWord">
+                <div class="icon"></div>直接费用分项成本示意图
+            </h2>
+        </div>
+
+        <!-- 圆环图 -->
+        <div class="chartDiv" id="pie">
+            <h2 class="tipWord">
+                <div class="icon"></div>直接费用分部成本示意图
+            </h2>
+            <div id="pied"></div>
+        </div>
+
+        <br class="clear" />
+        <!-- 折线图 -->
+        <div class="chartDiv" id="line">
+            <h2 class="tipWord">
+                <div class="icon"></div>直接费用成本估算分布图
+            </h2>
+        </div>
+    </div>
+
+    <script src="./js/ip.js"></script>
+    <script type="text/javascript">
+        var echarsId = sessionStorage.getItem('fkDecomEngineerStructId')
+        $(function () {
+            initData();
+        });
+        function getImg() {
+            window.parent.getpicture()
+        }
+
+        //获取网页元素的绝对位置
+        function getActuralPosition(element) {
+            let acturalLeft = element.offsetLeft;
+            let acturalTop = element.offsetTop;
+            let curElement = element.offsetParent;
+            while (curElement) {
+                acturalLeft += curElement.offsetLeft;
+                acturalTop += curElement.offsetTop;
+                curElement = curElement.offsetParent;
+            }
+            return {
+                left: acturalLeft,
+                top: acturalTop,
+            }
+        }
+        // 获取滚动条的宽度
+        function getScrollWidth() {
+            // 创建一个div元素
+            let noScroll, scroll, oDiv = document.createElement('DIV');
+            oDiv.style.cssText = 'position:absolute; top:-1000px; width:100px; height:100px;';
+            // 没有滚动条的clientWidth  clientWidth为content+paddingLeft+paddingRight 不包括滚动//条，可以利用这个获取差值来求滚动条的宽度
+            noScroll = document.body.appendChild(oDiv).clientWidth;
+            // oDiv.style.overflowY = 'scroll';
+            scroll = oDiv.clientWidth;
+            document.body.removeChild(oDiv);
+            return noScroll - scroll;
+        }
+
+        // G2 对数据源格式的要求，仅仅是 JSON 数组，数组的每个元素是一个标准 JSON 对象。
+        var dataForBar = [];
+        var dataForLine = [];
+        var dataForPie = [];
+        //方案下的所有分类费用数据之和
+        var allCost = '';
+
+        //生成数据
+        function initData() {
+            $.ajaxSetup({ //设置ajax异步关闭（ajax同步）
+                async: false
+            });
+
+            //请求柱状图数据
+            $.ajax({
+                type: "get",
+                url: `${http}itemPay/getItemPay2Bar?decomEngineerStructId=${echarsId}`,
+                data: [],
+                dataType: 'json',
+                headers: {
+                    token: localStorage.getItem('token'),
+                },
+                success: function (data) {
+                    if (data.code == 200) {
+                        dataForBar = data.data;
+                    } else {
+                        console.log(data.code, data.message);
+                    }
+                }
+            });
+
+            //请求折线图数据
+            $.ajax({
+                type: "get",
+                url: `${http}itemPay/getItemPay2Line?decomEngineerStructId=${echarsId}`,
+                data: [],
+                dataType: 'json',
+                headers: {
+                    token: localStorage.getItem('token'),
+                },
+                success: function (data) {
+                    if (data.code == 200) {
+                        dataForLine = data.data;
+
+                    } else {
+                        console.log(data.code, data.message);
+                    }
+                }
+            });
+
+            //请求饼图数据
+            $.ajax({
+                type: "get",
+                url: `${http}itemPay/getItemPay2Pie?decomEngineerStructId=${echarsId}`,
+                data: [],
+
+                dataType: 'json',
+                headers: {
+                    token: localStorage.getItem('token'),
+                },
+                success: function (data) {
+                    if (data.code == 200) {
+                        dataForPie = data.data;
+                    } else {
+                        console.log(data.code, data.message);
+                    }
+                }
+            });
+
+            //请求方案下的所有分类费用数据之和
+            $.ajax({
+                type: "get",
+                url: `${http}itemPay/getSchemePrice?decomEngineerStructId=${echarsId}`,
+                data: [],
+                dataType: 'json',
+                headers: {
+                    token: localStorage.getItem('token'),
+                },
+                success: function (data) {
+                    if (data.code == 200) {
+                        if (data.data.length != 0) {
+                            allCost = (data.data).toFixed(2);
+                        }
+                    } else {
+                        console.log(data.code, data.message);
+                    }
+                }
+            });
+
+            //渲染柱状图数据
+            if (dataForBar.length != 0) {
+                sendBarData(dataForBar);
+            }
+
+            //渲染饼图数据
+            if (dataForPie.length != 0) {
+                sendPieData(allCost, dataForPie);
+            }
+
+            //渲染折线图数据
+            if (dataForLine.length != 0) {
+                sendLineData(dataForLine);
+            }
+        }
+
+        //渲染折线图数据
+        function sendLineData(dataForLine) {
+
+            var data = [];
+            var timeArr = [];
+
+            //new折线图渲染数据对象
+            function data2(name, date, totalCost) {
+                return { 'name': name, 'date': date, 'totalCost': totalCost }
+            }
+
+            function data2(date, costPerWeek) {
+                return { 'date': date, 'totalCost': costPerWeek }
+            }
+
+            for (var line in dataForLine) {
+                if (dataForLine[line] != null) {
+                    timeArr.push(data2(dataForLine[line].startTime, dataForLine[line].costPerWeek))
+                }
+            };
+            var lineChart = new G2.Chart({
+                container: 'line',
+                //开启自适应
+                forceFit: true,
+                width: window.innerWidth,
+                padding: [30, 40, 75, 110] // 上右下左
+            });
+            lineChart.source(timeArr, {
+                name: {
+                    alias: "成本名称" //定义别名
+                },
+                totalCost: {
+                    alias: "成本费用"
+                }
+            });
+
+            lineChart.tooltip({// 提示信息
+                follow: true,
+                // crosshairs: 'y',
+                crosshairs: { //十字准线
+                    type: 'line'
+                }
+            });
+
+            lineChart.source(timeArr, {
+                // 'date': {// 显示的条数
+                //     tickCount: 10
+                // }
+            });
+
+            //横坐标
+            lineChart.axis('date', {
+                label: {
+                    textStyle: {
+                        fill: '#aaaaaa'
+                    }
+                }
+            });
+
+            //纵坐标
+            lineChart.axis('totalCost', {
+                textStyle: {
+                    fill: '#aaaaaa'
+                },
+                formatter: function formatter(text) {// 格式化参数值
+                    return text.replace(/(\d)(?=(?:\d{3})+$)/g, '$1,');
+                },
+            });
+            // 图例禁用
+            // chartt.legend(false);
+
+            lineChart.line().position('date*totalCost')
+            lineChart.point().position('date*totalCost').size(2).shape('circle').style({
+                // stroke: '#fff',
+                lineWidth: 13
+            });
+            lineChart.render();
+        }
+
+        //渲染柱状图数据
+        function sendBarData(dataForBar) {
+            // Step 1: 创建 Chart 对象
+            var barChart = new G2.Chart({
+                container: 'bar', // 指定图表容器 ID
+                //开启自适应
+                forceFit: true,
+                width: window.innerWidth,
+
+                // width : 900, // 指定图表宽度
+                // height : 600,// 指定图表高度
+
+                // height: window.innerHeight,
+                padding: [30, 40, 75, 110]
+                // padding: 160
+            });
+
+            barChart.tooltip({// 提示信息
+                follow: true,
+                // crosshairs: 'y', //十字准线
+                showTitle: false,
+            });
+
+            barChart.scale('payTotalForGroup', {
+                // 用于指定坐标轴各个标度点的距离
+                tickInterval: 100
+            });
+
+            // 图例禁用
+            // barChart.legend(false);
+
+            // Step 2: 载入数据源
+            barChart.source(dataForBar, {
+                costGroupName: {
+                    alias: "成本名称" //定义别名
+                },
+                payTotalForGroup: {
+                    alias: "成本费用"
+                }
+            });
+            // Step 3：创建图形语法，绘制柱状图，由 genre 和 sold 两个属性决定图形位置，genre 映射至 x 轴，sold 映射至 y 轴
+            barChart.interval().position('costGroupName*payTotalForGroup').color('costGroupName')
+
+            // Step 4: 渲染图表
+            barChart.render();
+        }
+        //圆环图数据
+        function sendPieData(allCost, dataForPie) {
+
+            //遍历数据
+
+            let data = dataForPie.map(item => {
+                return {
+                    name: item.treeName,
+                    y: item.cost
+                }
+            })
+
+            var chart = Highcharts.chart('pied', {
+
+                chart: {
+
+                    forceFit: true,
+                    height: 505,
+                    spacing: [50, 30, 50, 30],
+
+                },
+
+
+                //禁止显示版权信息
+                credits: {
+                    enabled: false
+                },
+
+                //圆环中间显示数据
+                title: {
+                    floating: true,
+                    text: '<div class="g2-guide-html"><p class="title">总计</p><p class="value">' + allCost + ' 元</p></div>'
+                },
+
+                //图例
+                legend: {
+                    enabled: true,
+                    layout: 'vertical',
+                    floating: true,
+                    align: 'right',
+                    verticalAlign: 'top',
+                },
+
+                //提示框
+                tooltip: {
+                    valueSuffix: ' 元',
+                    follow: true,
+
+                },
+
+                plotOptions: {
+                    pie: {
+
+                        allowPointSelect: true,
+                        cursor: 'pointer',
+                        dataLabels: {
+                            enabled: false,
+                        },
+                        showInLegend: true
+                    }
+                },
+
+                //放入数据
+                series: [{
+                    type: 'pie',
+                    innerSize: '60%',
+                    size: '75%',
+                    name: '成本费用',
+                    data: data
+
+                }],
+
+            }, function (c) { // 图表初始化完毕后的会掉函数
+                // 环形图圆心
+                var centerY = c.series[0].center[1],
+                    titleHeight = parseInt(c.title.styles.fontSize);
+                // 动态设置标题位置
+                c.setTitle({
+                    y: centerY + titleHeight / 2
+                });
+            },
+
+
+            )
+        }
+    </script>
+</body>
+
+</html>
